@@ -17,6 +17,7 @@ import com.desertkun.brainout.common.msg.server.KillMsg;
 import com.desertkun.brainout.common.msg.server.KilledByMsg;
 import com.desertkun.brainout.components.PlayerOwnerComponent;
 import com.desertkun.brainout.components.ServerBotWeaponComponent;
+import com.desertkun.brainout.components.ServerFreePartnerBotComponent;
 import com.desertkun.brainout.content.ContentLockTree;
 import com.desertkun.brainout.content.PlayerSkin;
 import com.desertkun.brainout.content.active.Item;
@@ -631,7 +632,10 @@ public class ServerPlayerColliderComponentData
 
                 if (BrainOutServer.Controller.isFreePlay())
                 {
-                    if (client instanceof PlayerClient)
+                    boolean isFreeplayBot =
+                        playerData.getComponent(ServerFreePartnerBotComponent.class) != null;
+
+                    if (client instanceof PlayerClient || isFreeplayBot)
                     {
                         ConsumableContent dogTags =
                                 BrainOutServer.ContentMgr.get("freeplay-dog-tags", ConsumableContent.class);
@@ -639,7 +643,6 @@ public class ServerPlayerColliderComponentData
                         if (dogTags != null)
                         {
                             ConsumableRecord tags = null;
-
                             for (ConsumableRecord record : records)
                             {
                                 if (record.getItem().getContent().getID().equals("freeplay-dog-tags"))
@@ -656,9 +659,12 @@ public class ServerPlayerColliderComponentData
                                 records.add(tags);
                             }
                         }
+                    }
 
-                        PlayerAnimationComponentData pac = playerData.getComponent(PlayerAnimationComponentData.class);
-
+                    if (client instanceof PlayerClient)
+                    {
+                        PlayerAnimationComponentData pac =
+                                playerData.getComponent(PlayerAnimationComponentData.class);
                         if (pac != null)
                         {
                             PlayerSkin playerSkin = pac.getSkin();
@@ -666,8 +672,7 @@ public class ServerPlayerColliderComponentData
                         }
                     }
                 }
-
-                if (records.size > 0)
+if (records.size > 0)
                 {
                     ServerMap.dropItem(playerData.getDimension(), dropItem, records,
                             ownerId, playerData.getX(), playerData.getY(),

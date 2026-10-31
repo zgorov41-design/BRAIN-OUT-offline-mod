@@ -11,7 +11,9 @@ import com.desertkun.brainout.Constants;
 import com.desertkun.brainout.bot.Task;
 import com.desertkun.brainout.bot.TaskCrow;
 import com.desertkun.brainout.bot.freeplay.TaskFreePlay;
+import com.desertkun.brainout.bot.freeplay.HuntAround;
 import com.desertkun.brainout.bot.TaskStack;
+import com.desertkun.brainout.bot.TaskCreator;
 import com.desertkun.brainout.bot.freeplay.TaskZombie;
 import com.desertkun.brainout.client.BotClient;
 import com.desertkun.brainout.client.Client;
@@ -80,6 +82,8 @@ import java.util.*;
 public class ServerFreeRealization extends ServerRealization<GameModeFree>
 {
     private Array<ActiveData> spawnPool;
+    private int freeplayBotTarget = -1;
+    private Array<PlayerSkinSlotItem> freeplayBotSkins;
 
     public class Party
     {
@@ -1585,6 +1589,7 @@ public class ServerFreeRealization extends ServerRealization<GameModeFree>
         scheduleTask(this::updateCrickets, 2000, 2000);
         scheduleTask(this::syncWaves, 5000, 5000);
         scheduleTask(this::spawnCrows, 2000, 2000);
+        scheduleTask(this::maintainFreeplayBots, 3000, 10000);
         //scheduleTask(this::spawnZombies, 1000, 1000);
 
         //spawnSnow();
@@ -1802,6 +1807,239 @@ public class ServerFreeRealization extends ServerRealization<GameModeFree>
                 }
             }
         }
+    }
+
+    private int countAliveFreeplayBots()
+    {
+        int count = 0;
+
+        for (ObjectMap.Entry<String, Map> entry : Map.AllEntries())
+        {
+            ObjectMap.Values<ActiveData> players =
+                entry.value.getActivesForTag(Constants.ActiveTags.PLAYERS, false);
+
+            for (ActiveData activeData : players)
+            {
+                if (activeData.isAlive() &&
+                    activeData.getComponent(ServerFreePartnerBotComponent.class) != null)
+                {
+                    count++;
+                }
+            }
+        }
+
+        return count;
+    }
+
+    private void maintainFreeplayBots()
+    {
+        if (spawnPool == null || spawnPool.size == 0)
+            return;
+
+        if (freeplayBotTarget < 0)
+        {
+            freeplayBotTarget = MathUtils.random(20, 25);
+
+            if (Log.INFO)
+                Log.info("Freeplay bot target population: " + freeplayBotTarget);
+        }
+
+        if (countAliveFreeplayBots() >= freeplayBotTarget)
+            return;
+
+        Array<ActiveData> candidates = new Array<>();
+
+        for (ActiveData spawnAt : spawnPool)
+        {
+            if (!(spawnAt instanceof Spawnable))
+                continue;
+
+            Map map = spawnAt.getMap();
+            if (map == null)
+                continue;
+
+            boolean good = true;
+
+            ObjectMap.Values<ActiveData> players =
+                map.getActivesForTag(Constants.ActiveTags.PLAYERS, false);
+
+            for (ActiveData existing : players)
+            {
+                if (!existing.isAlive())
+                    continue;
+
+                float distance = Vector2.dst(
+                    existing.getX(), existing.getY(),
+                    spawnAt.getX(), spawnAt.getY()
+                );
+
+                if (existing.getComponent(ServerFreePartnerBotComponent.class) != null)
+                {
+                    if (distance < 24)
+                    {
+                        good = false;
+                        break;
+                    }
+
+                    continue;
+                }
+
+                if (existing.getOwnerId() < 0 || distance > 64)
+                    continue;
+
+                if (distance < 32 || spawnAt.isVisible(existing))
+                {
+                    good = false;
+                    break;
+                }
+            }
+
+            if (good)
+                candidates.add(spawnAt);
+        }
+
+        candidates.shuffle();
+
+        int spawned = 0;
+
+        for (ActiveData spawnAt : candidates)
+        {
+            if (countAliveFreeplayBots() >= freeplayBotTarget)
+                break;
+
+            if (spawnFreeplayBot(spawnAt))
+                spawned++;
+        }
+
+        if (spawned > 0)
+        {
+            if (Log.INFO)
+                Log.info("Freeplay bot maintenance spawned " + spawned
+                    + " bot(s); alive=" + countAliveFreeplayBots());
+        }
+        else if (candidates.size == 0 && Log.INFO)
+        {
+            Log.info("Freeplay bot maintenance: no safe spawn points available.");
+        }
+    }
+
+    private Array<PlayerSkinSlotItem> getFreeplayBotSkins()
+    {
+        if (freeplayBotSkins == null)
+        {
+            freeplayBotSkins = BrainOutServer.ContentMgr.queryContent(
+                PlayerSkinSlotItem.class,
+                slot -> RandomWeightComponent.Get(slot) != 0
+            );
+        }
+
+        return freeplayBotSkins;
+    }
+
+    private boolean spawnFreeplayBot(ActiveData spawnAt)
+    {
+        if (spawnAt == null || spawnAt.getMap() == null)
+            return false;
+
+        GameMode gameMode = BrainOutServer.Controller.getGameMode();
+
+        if (gameMode == null ||
+            !(gameMode.getRealization() instanceof ServerFreeRealization))
+            return false;
+
+        Map map = spawnAt.getMap();
+
+        Player player = BrainOutServer.ContentMgr.get(
+            "player-freeplay", Player.class
+        );
+        Team team = BrainOutServer.ContentMgr.get(
+            "team-freeplay", Team.class
+        );
+
+        if (player == null || team == null)
+            return false;
+
+        PlayerData playerData = (PlayerData) player.getData(map.getDimension());
+        playerData.setTeam(team);
+
+        BotControllerComponentData botController =
+            new BotControllerComponentData(playerData);
+        PlayerOwnerComponent ownerComponent =
+            new PlayerOwnerComponent(playerData);
+        PlayerRemoteComponent remoteComponent =
+            new PlayerRemoteComponent(playerData);
+
+        botController.getTasksStack().pushTask(
+            new TaskCreator(botController.getTasksStack(),
+                (stack, creator) ->
+                    creator.pushTask(new HuntAround(stack, new IntSet()))
+            )
+        );
+
+        playerData.addComponent(new ServerFreePartnerBotComponent(""));
+        playerData.addComponent(botController);
+        playerData.addComponent(ownerComponent);
+        playerData.addComponent(remoteComponent);
+
+        playerData.setPosition(spawnAt.getX(), spawnAt.getY());
+        playerData.setAngle(180);
+
+        PlayerAnimationComponentData animation =
+            playerData.getComponent(PlayerAnimationComponentData.class);
+
+        Array<PlayerSkinSlotItem> skins = getFreeplayBotSkins();
+
+        if (animation != null && skins != null && skins.size > 0)
+            animation.setSkin(skins.random().getSkin());
+
+        PrimaryWeaponAndAmmo.generate(
+            this, ownerComponent.getConsumableContainer(),
+            map.getDimension(), playerData
+        );
+
+        switch (MathUtils.random(3))
+        {
+            case 0:
+                RandomAmmo.generate(this, ownerComponent.getConsumableContainer());
+                break;
+
+            case 1:
+                SecondaryWeaponAndAmmo.generate(
+                    this, ownerComponent.getConsumableContainer(),
+                    map.getDimension(), playerData
+                );
+                break;
+
+            default:
+                OtherConsumables.generate(
+                    this, ownerComponent.getConsumableContainer()
+                );
+                break;
+        }
+
+        Weapon knife = BrainOutServer.ContentMgr.get("weapon-knife", Weapon.class);
+
+        if (knife != null)
+        {
+            WeaponData weaponData = knife.getData(map.getDimension());
+
+            ownerComponent.getConsumableContainer().putConsumable(
+                1, new InstrumentConsumableItem(weaponData, map.getDimension())
+            );
+        }
+
+        botController.selectFirstInstrument(ownerComponent);
+        remoteComponent.setCurrentInstrument(ownerComponent.getCurrentInstrument());
+
+        map.addActive(
+            map.generateServerId(), playerData, true, true,
+            ActiveData.ComponentWriter.TRUE
+        );
+
+        if (Log.INFO)
+            Log.info("Spawned new bot at " + map.getDimension());
+
+        return true;
     }
 
     private static Array<String> ZOMBIES = new Array<>(new String[]{

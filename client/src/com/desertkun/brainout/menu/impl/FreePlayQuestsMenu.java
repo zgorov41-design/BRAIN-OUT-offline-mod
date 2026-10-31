@@ -28,6 +28,7 @@ import com.desertkun.brainout.content.quest.Tree;
 import com.desertkun.brainout.content.quest.task.ClientTask;
 import com.desertkun.brainout.content.quest.task.Task;
 import com.desertkun.brainout.gs.GameState;
+import com.desertkun.brainout.menu.LocalServerLauncher;
 import com.desertkun.brainout.menu.Menu;
 import com.desertkun.brainout.menu.popups.AlertPopup;
 import com.desertkun.brainout.menu.ui.ClickOverListener;
@@ -417,9 +418,7 @@ public class FreePlayQuestsMenu extends Menu
     {
         if (!BrainOut.OnlineEnabled())
         {
-            popMeAndPushMenu(new AlertPopup(
-                BrainOutClient.Env.getOfflineBuildError("Run Server Free Play.bat")
-            ));
+            LocalServerLauncher.launchFreePlay();
             return;
         }
 

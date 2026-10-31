@@ -920,7 +920,7 @@ public class FreePlaySummaryMenu extends Menu
     {
         if (!BrainOut.OnlineEnabled())
         {
-            Gdx.app.exit();
+            com.desertkun.brainout.menu.LocalServerLauncher.returnToLobby();
             return;
         }
 

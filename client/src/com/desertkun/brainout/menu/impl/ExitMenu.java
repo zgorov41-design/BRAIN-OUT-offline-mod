@@ -318,7 +318,15 @@ public class ExitMenu extends Menu
     {
         if (!BrainOut.OnlineEnabled())
         {
-            Gdx.app.exit();
+            if (com.desertkun.brainout.menu.LocalServerLauncher.isLocalMatchSession())
+            {
+                com.desertkun.brainout.menu.LocalServerLauncher.returnToLobby();
+            }
+            else
+            {
+                Gdx.app.exit();
+            }
+
             return;
         }
 

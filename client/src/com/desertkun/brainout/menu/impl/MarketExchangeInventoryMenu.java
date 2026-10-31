@@ -40,7 +40,7 @@ public class MarketExchangeInventoryMenu extends ExchangeInventoryMenu
         this.marketContainer = marketContainer;
 
         marketPass = BrainOut.ContentMgr.get("market-pass", Achievement.class);
-        if (marketPass != null)
+        if (marketPass != null && com.desertkun.brainout.BrainOut.OnlineEnabled())
         {
             marketUnlocked = BrainOutClient.ClientController.getUserProfile().hasItem(marketPass);
         }
@@ -82,6 +82,45 @@ public class MarketExchangeInventoryMenu extends ExchangeInventoryMenu
         if (am == 0)
         {
             return false;
+        }
+
+	if (!BrainOut.OnlineEnabled())
+        {
+            ActiveData storage = market.getPlaceInto();
+
+            if (!(storage instanceof com.desertkun.brainout.data.active.ItemData))
+            {
+                Menu.playSound(MenuSound.denied);
+                return false;
+            }
+
+            BrainOutClient.ClientController.sendTCP(
+                new com.desertkun.brainout.common.msg.client.PutRecordIntoItemMsg(
+                    storage.getId(), record, am
+                )
+            );
+
+            InventoryMoveSoundComponent snd =
+                record.getItem().getContent().getComponent(InventoryMoveSoundComponent.class);
+
+            if (snd != null)
+            {
+                snd.play(playerData);
+            }
+
+            com.badlogic.gdx.utils.Timer.schedule(
+                new com.badlogic.gdx.utils.Timer.Task()
+                {
+                    @Override
+                    public void run()
+                    {
+                        market.refresh();
+                    }
+                },
+                0.5f
+            );
+
+            return true;
         }
 
         JSONObject args = new JSONObject();
@@ -133,6 +172,45 @@ public class MarketExchangeInventoryMenu extends ExchangeInventoryMenu
             return false;
         }
          */
+	
+	if (!BrainOut.OnlineEnabled())
+        {
+            ActiveData storage = market.getPlaceInto();
+
+            if (!(storage instanceof com.desertkun.brainout.data.active.ItemData))
+            {
+                Menu.playSound(MenuSound.denied);
+                return false;
+            }
+
+            BrainOutClient.ClientController.sendTCP(
+                new com.desertkun.brainout.common.msg.client.TakeRecordFromItemMsg(
+                    storage.getId(), record.getRecord(), amount
+                )
+            );
+
+            InventoryMoveSoundComponent snd =
+                c.getComponent(InventoryMoveSoundComponent.class);
+
+            if (snd != null)
+            {
+                snd.play(playerData);
+            }
+
+            com.badlogic.gdx.utils.Timer.schedule(
+                new com.badlogic.gdx.utils.Timer.Task()
+                {
+                    @Override
+                    public void run()
+                    {
+                        market.refresh();
+                    }
+                },
+                0.5f
+            );
+
+            return true;
+        }
 
         JSONObject args = new JSONObject();
 

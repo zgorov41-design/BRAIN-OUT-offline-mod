@@ -136,6 +136,9 @@ public abstract class Task
             if (target == getPlayerData())
                 return false;
 
+            if (target.getCreator() != null && "player-crow".equals(target.getCreator().getID()))
+                return false;
+
             if (target.getOwnerId() < 0 || getPlayerData().getOwnerId() < 0)
             {
                 if (!gameMode.isEnemiesActive(target, getPlayerData()))

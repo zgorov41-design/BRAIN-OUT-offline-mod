@@ -50,6 +50,37 @@ public class FreeplayBotSpawnerComponentData extends Component<FreeplayBotSpawne
     private static Queue<ActiveData> SpawnPoints = new Queue<>();
     private static Array<ActiveData> Candidates = new Array<>();
 
+    private static int targetPopulation = -1;
+
+    private static int getTargetPopulation()
+    {
+        if (targetPopulation < 0)
+        {
+            targetPopulation = MathUtils.random(20, 25);
+            Log.info("Freeplay bot target population: " + targetPopulation);
+        }
+        return targetPopulation;
+    }
+
+    private int countAliveBots()
+    {
+        int count = 0;
+        for (ObjectMap.Entry<String, Map> entry : Map.AllEntries())
+        {
+            ObjectMap.Values<ActiveData> players =
+                entry.value.getActivesForTag(Constants.ActiveTags.PLAYERS, false);
+            for (ActiveData activeData : players)
+            {
+                if (activeData.isAlive() &&
+                    activeData.getComponent(ServerFreePartnerBotComponent.class) != null)
+                {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
     private Array<PlayerSkinSlotItem> playerSkinsPool;
 
     public FreeplayBotSpawnerComponentData(BotSpawnerData spawnerData,
@@ -108,9 +139,12 @@ public class FreeplayBotSpawnerComponentData extends Component<FreeplayBotSpawne
             ToRemove.clear();
         }
 
-        if (alive < spawner.targetAmount)
+        int totalAlive = countAliveBots();
+        int target = getTargetPopulation();
+
+        if (totalAlive < target)
         {
-            spawn(spawner.targetAmount - alive, map);
+            spawn(target - totalAlive, map);
         }
         else
         {

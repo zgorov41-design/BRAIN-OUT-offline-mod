@@ -206,11 +206,40 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
 
     private boolean putItemIntoMarket(ConsumableRecord record, int amount, MarketItemsInventoryPanel market)
     {
-        int am = Math.min(market.canFitAnItem(record), amount);
+        com.badlogic.gdx.Gdx.app.error("OfflineStashTrace", "putItemIntoMarket called; online=" + BrainOut.OnlineEnabled() + ", amount=" + amount + ", recordNull=" + (record == null));
+
+        int am = BrainOut.OnlineEnabled() ? Math.min(market.canFitAnItem(record), amount) : amount;
 
         if (am == 0)
         {
             return false;
+        }
+
+        if (!BrainOut.OnlineEnabled())
+        {
+            com.desertkun.brainout.components.PlayerOwnerComponent owner =
+                playerData.getComponent(com.desertkun.brainout.components.PlayerOwnerComponent.class);
+
+            if (owner == null)
+            {
+                com.badlogic.gdx.Gdx.app.error("OfflineStash",
+                    "Deposit rejected: PlayerOwnerComponent is null.");
+                Menu.playSound(MenuSound.denied);
+                return false;
+            }
+
+            if (!com.desertkun.brainout.utils.LocalOfflineMarketStorage.deposit(
+                record, am, owner.getConsumableContainer()))
+            {
+                Menu.playSound(MenuSound.denied);
+                return false;
+            }
+
+            InventoryMoveSoundComponent snd = record.getItem().getContent()
+                .getComponent(InventoryMoveSoundComponent.class);
+            if (snd != null) snd.play(playerData);
+            market.refresh();
+            return true;
         }
 
         JSONObject args = new JSONObject();
@@ -253,15 +282,23 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
         if (c == null)
             return false;
 
-        /*
-        UniqueComponent uniqueComponent = c.getComponent(UniqueComponent.class);
-
-        if (uniqueComponent != null && getUniqueItem(uniqueComponent.getCategory(), sourcePanel.getInventory()) != null)
+        if (!BrainOut.OnlineEnabled())
         {
-            Menu.playSound(MenuSound.denied);
-            return false;
+            com.desertkun.brainout.components.PlayerOwnerComponent owner =
+                playerData.getComponent(com.desertkun.brainout.components.PlayerOwnerComponent.class);
+
+            if (owner == null || !com.desertkun.brainout.utils.LocalOfflineMarketStorage.withdraw(
+                record.getMarketEntry(), amount, owner.getConsumableContainer()))
+            {
+                Menu.playSound(MenuSound.denied);
+                return false;
+            }
+
+            InventoryMoveSoundComponent snd = c.getComponent(InventoryMoveSoundComponent.class);
+            if (snd != null) snd.play(playerData);
+            market.refresh();
+            return true;
         }
-         */
 
         JSONObject args = new JSONObject();
 
@@ -298,6 +335,8 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
 
     private boolean move(InventoryPanel.InventoryRecord record, int amount, InventoryPanel from, InventoryPanel to)
     {
+        com.badlogic.gdx.Gdx.app.error("OfflineStashTrace", "move called; online=" + BrainOut.OnlineEnabled() + ", from=" + (from == null ? "null" : from.getClass().getName()) + ", to=" + (to == null ? "null" : to.getClass().getName()));
+
         if (from instanceof ConsumableInventoryPanel)
         {
             if (to instanceof MarketItemsInventoryPanel)

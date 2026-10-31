@@ -180,8 +180,7 @@ public class Client extends ReflectionReceiver implements ActiveData.ComponentWr
 
     public boolean catTrackStatsWithBots()
     {
-        // allow to farm bots up until 10 level
-        return getLevel(Constants.User.LEVEL, 0) < 10;
+        return true;
     }
 
     public void onDeath(Client killer, PlayerData playerData, InstrumentInfo info)

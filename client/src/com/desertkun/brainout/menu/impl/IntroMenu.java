@@ -110,7 +110,7 @@ public class IntroMenu extends Menu implements EventReceiver
 
         addActor(status);
 
-        status.add(new LoadingBlock()).pad(32).expandX().right().row();
+    	status.add(new LoadingBlock()).pad(32).expandX().right().row();
 
         return data;
     }

@@ -29,6 +29,7 @@ import com.desertkun.brainout.events.SettingsUpdatedEvent;
 import com.desertkun.brainout.events.SimpleEvent;
 import com.desertkun.brainout.gs.GameState;
 import com.desertkun.brainout.managers.LocalizationManager;
+import com.desertkun.brainout.menu.LocalServerLauncher;
 import com.desertkun.brainout.menu.Menu;
 import com.desertkun.brainout.menu.popups.AlertPopup;
 import com.desertkun.brainout.menu.popups.ExitPopup;
@@ -772,9 +773,7 @@ public class LobbyMenu extends PlayerSelectionMenu
     {
         if (!BrainOut.OnlineEnabled())
         {
-            BrainOutClient.getInstance().topState().pushMenu(new AlertPopup(
-                    BrainOutClient.Env.getOfflineBuildError("Run Server Game Phase.bat")
-            ));
+            LocalServerLauncher.launchMatch();
             return;
         }
 
@@ -817,7 +816,6 @@ public class LobbyMenu extends PlayerSelectionMenu
                     @Override
                     public void connectionFailed()
                     {
-
                     }
                 }, true);
             }
@@ -828,12 +826,10 @@ public class LobbyMenu extends PlayerSelectionMenu
     {
         if (!BrainOut.OnlineEnabled())
         {
-            BrainOutClient.getInstance().topState().pushMenu(new AlertPopup(
-                    BrainOutClient.Env.getOfflineBuildError("Run Server Game Phase.bat")
-            ));
+            LocalServerLauncher.launchMatch();
             return;
         }
-
+		
         pushMenu(new ServerBrowserMenu(new ServerBrowserMenu.Callback()
         {
             @Override
@@ -933,9 +929,7 @@ public class LobbyMenu extends PlayerSelectionMenu
     {
         if (!BrainOut.OnlineEnabled())
         {
-            BrainOutClient.getInstance().topState().pushMenu(new AlertPopup(
-                BrainOutClient.Env.getOfflineBuildError("Run Server Game Phase.bat")
-            ));
+            LocalServerLauncher.launchMatch();
             return;
         }
 

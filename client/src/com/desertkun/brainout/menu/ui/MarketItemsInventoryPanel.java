@@ -1,5 +1,8 @@
 package com.desertkun.brainout.menu.ui;
-
+import com.badlogic.gdx.utils.ObjectMap;
+import com.desertkun.brainout.data.active.ItemData;
+import java.util.ArrayList;
+import com.desertkun.brainout.BrainOut;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
@@ -95,29 +98,48 @@ public class MarketItemsInventoryPanel extends TargetInventoryPanel
 
     private void requestItems()
     {
+        if (!BrainOut.OnlineEnabled())
+        {
+            List<MarketService.MarketItemEntry> entries =
+                com.desertkun.brainout.utils.LocalOfflineMarketStorage.getItems();
+
+            stopLoading();
+            renderItems(entries);
+
+            if (itemsLoadedHook != null)
+            {
+                itemsLoadedHook.loaded(entries);
+            }
+
+            return;
+        }
+
         LoginService loginService = LoginService.Get();
         MarketService marketService = MarketService.Get();
 
-        marketService.getMarketItems("freeplay",
-            loginService.getCurrentAccessToken(), (request, result, entries) -> Gdx.app.postRunnable(() ->
-        {
-            stopLoading();
-
-            if (result == Request.Result.success)
+        marketService.getMarketItems(
+            "freeplay",
+            loginService.getCurrentAccessToken(),
+            (request, result, entries) -> Gdx.app.postRunnable(() ->
             {
-                renderItems(entries);
-                if (itemsLoadedHook != null)
+                stopLoading();
+
+                if (result == Request.Result.success)
                 {
-                    itemsLoadedHook.loaded(entries);
-                }
-            }
-            else
-            {
-                renderFailure();
-            }
-        }));
-    }
+                    renderItems(entries);
 
+                    if (itemsLoadedHook != null)
+                    {
+                        itemsLoadedHook.loaded(entries);
+                    }
+                }
+                else
+                {
+                    renderFailure();
+                }
+            })
+        );
+    }
     protected void updated(float weight)
     {
 
