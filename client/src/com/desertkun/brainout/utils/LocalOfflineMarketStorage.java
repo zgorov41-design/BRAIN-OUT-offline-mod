@@ -363,4 +363,67 @@ public final class LocalOfflineMarketStorage
             return false;
         }
     }
+
+    /** Removes a stack from the local stash (used by the Freeplay trash can). */
+    public static synchronized boolean remove(MarketService.MarketItemEntry entry, int amount)
+    {
+        if (entry == null || entry.name == null || entry.payload == null || amount <= 0)
+        {
+            return false;
+        }
+
+        final JSONArray previous;
+        final JSONArray updated;
+        try
+        {
+            previous = load();
+            updated = new JSONArray(previous.toString());
+        }
+        catch (Exception e)
+        {
+            return false;
+        }
+
+        int index = findStoredItem(updated, entry.name, entry.payload);
+        if (index < 0)
+        {
+            return false;
+        }
+
+        JSONObject stored = updated.optJSONObject(index);
+        int storedAmount = stored != null ? stored.optInt("amount", 0) : 0;
+        if (storedAmount < amount)
+        {
+            return false;
+        }
+
+        if (storedAmount == amount)
+        {
+            updated.remove(index);
+        }
+        else
+        {
+            stored.put("amount", storedAmount - amount);
+        }
+
+        try
+        {
+            save(updated);
+            return true;
+        }
+        catch (Exception e)
+        {
+            try
+            {
+                save(previous);
+            }
+            catch (Exception rollbackError)
+            {
+                Gdx.app.error("OfflineStash", "Could not roll back a failed stash removal.", rollbackError);
+            }
+
+            Gdx.app.error("OfflineStash", "Could not remove item from local stash.", e);
+            return false;
+        }
+    }
 }
