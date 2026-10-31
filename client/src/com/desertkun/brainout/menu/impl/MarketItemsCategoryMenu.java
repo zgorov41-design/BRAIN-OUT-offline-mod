@@ -206,7 +206,6 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
 
     private boolean putItemIntoMarket(ConsumableRecord record, int amount, MarketItemsInventoryPanel market)
     {
-        com.badlogic.gdx.Gdx.app.error("OfflineStashTrace", "putItemIntoMarket called; online=" + BrainOut.OnlineEnabled() + ", amount=" + amount + ", recordNull=" + (record == null));
 
         int am = BrainOut.OnlineEnabled() ? Math.min(market.canFitAnItem(record), amount) : amount;
 
@@ -335,7 +334,6 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
 
     private boolean move(InventoryPanel.InventoryRecord record, int amount, InventoryPanel from, InventoryPanel to)
     {
-        com.badlogic.gdx.Gdx.app.error("OfflineStashTrace", "move called; online=" + BrainOut.OnlineEnabled() + ", from=" + (from == null ? "null" : from.getClass().getName()) + ", to=" + (to == null ? "null" : to.getClass().getName()));
 
         if (from instanceof ConsumableInventoryPanel)
         {
@@ -578,9 +576,12 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
                     BrainOutClient.Skin, "button-checkable-market");
 
                 market.getLabel().setWrap(true);
-                market.setDisabled(!marketUnlocked);
 
-                if (marketUnlocked)
+                boolean onlineMarketAvailable = BrainOut.OnlineEnabled() && marketUnlocked;
+                market.setDisabled(!onlineMarketAvailable);
+                market.setVisible(BrainOut.OnlineEnabled());
+
+                if (onlineMarketAvailable)
                 {
                     dragAndDrop.addTarget(new DragAndDrop.Target(market)
                     {
@@ -1111,6 +1112,49 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
 
             MarketItemsInventoryPanel.MarketInventoryRecord record =
                 (MarketItemsInventoryPanel.MarketInventoryRecord)inventoryItem.getRecord();
+
+            if (!BrainOut.OnlineEnabled())
+            {
+                int stashAmount = record.getRecord().getAmount();
+
+                if (stashAmount > 1)
+                {
+                    pushMenu(new AmountMenu(stashAmount, stashAmount)
+                    {
+                        @Override
+                        public void approve(int amount)
+                        {
+                            if (com.desertkun.brainout.utils.LocalOfflineMarketStorage.remove(
+                                record.getMarketEntry(), amount))
+                            {
+                                Menu.playSound(MenuSound.trash);
+                                market.refresh();
+                            }
+                            else
+                            {
+                                Menu.playSound(MenuSound.denied);
+                            }
+                        }
+
+                        @Override
+                        public void cancel()
+                        {
+                        }
+                    });
+                }
+                else if (com.desertkun.brainout.utils.LocalOfflineMarketStorage.remove(
+                    record.getMarketEntry(), stashAmount))
+                {
+                    Menu.playSound(MenuSound.trash);
+                    market.refresh();
+                }
+                else
+                {
+                    Menu.playSound(MenuSound.denied);
+                }
+
+                return;
+            }
 
             JSONObject args = new JSONObject();
             args.put("market", market.getMarket());
