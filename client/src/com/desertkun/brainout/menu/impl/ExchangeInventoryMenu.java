@@ -1857,6 +1857,49 @@ public class ExchangeInventoryMenu extends Menu implements EventReceiver
             MarketItemsInventoryPanel.MarketInventoryRecord record =
                 (MarketItemsInventoryPanel.MarketInventoryRecord)inventoryItem.getRecord();
 
+            if (!BrainOut.OnlineEnabled())
+            {
+                int stashAmount = record.getRecord().getAmount();
+
+                if (stashAmount > 1)
+                {
+                    pushMenu(new AmountMenu(stashAmount, stashAmount)
+                    {
+                        @Override
+                        public void approve(int amount)
+                        {
+                            if (com.desertkun.brainout.utils.LocalOfflineMarketStorage.remove(
+                                record.getMarketEntry(), amount))
+                            {
+                                Menu.playSound(MenuSound.trash);
+                                market.refresh();
+                            }
+                            else
+                            {
+                                Menu.playSound(MenuSound.denied);
+                            }
+                        }
+
+                        @Override
+                        public void cancel()
+                        {
+                        }
+                    });
+                }
+                else if (com.desertkun.brainout.utils.LocalOfflineMarketStorage.remove(
+                    record.getMarketEntry(), stashAmount))
+                {
+                    Menu.playSound(MenuSound.trash);
+                    market.refresh();
+                }
+                else
+                {
+                    Menu.playSound(MenuSound.denied);
+                }
+
+                return;
+            }
+
             JSONObject args = new JSONObject();
             args.put("market", market.getMarket());
             args.put("item", record.getMarketEntry().name);
