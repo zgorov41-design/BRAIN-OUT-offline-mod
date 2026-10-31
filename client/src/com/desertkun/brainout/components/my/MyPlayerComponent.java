@@ -510,9 +510,6 @@ public class MyPlayerComponent extends PlayerControllerComponentData
         if (poc == null)
             return false;
 
-        if (poc.getCurrentInstrumentRecord() == null)
-            return false;
-
         PlayerComponentData pc = getPlayerData().getComponent(PlayerComponentData.class);
         if (pc != null && pc.isPlayingCustomAnimation())
         {
