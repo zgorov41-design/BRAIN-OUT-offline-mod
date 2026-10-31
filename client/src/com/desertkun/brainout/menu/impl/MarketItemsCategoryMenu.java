@@ -459,8 +459,16 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
                 0, 500, 0.05f, false,
                 BrainOutClient.Skin, "progress-inventory");
 
-            b.add(targetFill).expandX().fillX().padTop(-2).row();
-            targetPanel.setHeight(targetPanel.getHeight() - targetWeightRoot.getHeight() - targetFill.getHeight());
+            if (BrainOut.OnlineEnabled())
+            {
+                b.add(targetFill).expandX().fillX().padTop(-2).row();
+                targetPanel.setHeight(targetPanel.getHeight() - targetWeightRoot.getHeight() - targetFill.getHeight());
+            }
+            else
+            {
+                // Offline stash has no weight bar or storage capacity.
+                targetPanel.setHeight(targetPanel.getHeight() - targetWeightRoot.getHeight());
+            }
 
             friendly = targetPanel.customFriendlyButton();
 
@@ -691,25 +699,34 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
     {
         if (targetWeightRoot != null)
         {
-            targetFill.setValue(weight);
-            targetFill.setRange(0, maxWeight);
+            if (BrainOut.OnlineEnabled())
+            {
+                targetFill.setValue(weight);
+                targetFill.setRange(0, maxWeight);
 
-            targetFill.setStyle(BrainOutClient.Skin.get(
-                    weight > maxWeight * 0.95f ?
-                            "progress-inventory-full" : (
-                            weight > maxWeight * 0.75f ?
-                                    "progress-inventory-half-full" : "progress-inventory")
-                    , ProgressBar.ProgressBarStyle.class
-            ));
+                targetFill.setStyle(BrainOutClient.Skin.get(
+                        weight > maxWeight * 0.95f ?
+                                "progress-inventory-full" : (
+                                weight > maxWeight * 0.75f ?
+                                        "progress-inventory-half-full" : "progress-inventory")
+                        , ProgressBar.ProgressBarStyle.class
+                ));
+            }
 
             targetWeighInfo.setText(StringFunctions.format(
                     (float)(int)(weight * 100.0f) / 100.0f
-            ) + " / " + StringFunctions.format(maxWeight) + " " + L.get("CHAR_SUFFIX_BLOCKS"));
+            ) + " / " + (BrainOut.OnlineEnabled() ? StringFunctions.format(maxWeight) : "∞")
+                + " " + L.get("CHAR_SUFFIX_BLOCKS"));
         }
 
         if (targetWeightUpgrades != null)
         {
             targetWeightUpgrades.clear();
+
+            if (!BrainOut.OnlineEnabled())
+            {
+                return;
+            }
 
             UserProfile profile = BrainOutClient.ClientController.getUserProfile();
             ExtendedStorage roomToExtend = ExtendedStorage.HasRoomToExtend(profile);
