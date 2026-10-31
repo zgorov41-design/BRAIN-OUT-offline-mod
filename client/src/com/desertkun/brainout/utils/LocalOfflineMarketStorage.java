@@ -47,8 +47,8 @@ public final class LocalOfflineMarketStorage
         }
         catch (Exception e)
         {
-            Gdx.app.error("OfflineStash", "Could not read local stash; using an empty list.", e);
-            return new JSONArray();
+            Gdx.app.error("OfflineStash", "Could not read local stash; changes are disabled to protect saved items.", e);
+            throw new IllegalStateException("Local Freeplay stash is unreadable.", e);
         }
     }
 
@@ -120,7 +120,12 @@ public final class LocalOfflineMarketStorage
         if (index >= 0)
         {
             JSONObject stored = items.optJSONObject(index);
-            stored.put("amount", stored.optInt("amount", 0) + amount);
+            int currentAmount = stored.optInt("amount", 0);
+            if (currentAmount < 0 || currentAmount > Integer.MAX_VALUE - amount)
+            {
+                throw new IllegalArgumentException("Stash amount overflow.");
+            }
+            stored.put("amount", currentAmount + amount);
             // Normalize legacy payload objects back to the existing string format.
             stored.put("payload", payload.toString());
             return;
@@ -136,7 +141,15 @@ public final class LocalOfflineMarketStorage
     public static synchronized List<MarketService.MarketItemEntry> getItems()
     {
         List<MarketService.MarketItemEntry> result = new ArrayList<>();
-        JSONArray items = load();
+        JSONArray items;
+        try
+        {
+            items = load();
+        }
+        catch (Exception e)
+        {
+            return result;
+        }
 
         for (int i = 0; i < items.length(); i++)
         {
