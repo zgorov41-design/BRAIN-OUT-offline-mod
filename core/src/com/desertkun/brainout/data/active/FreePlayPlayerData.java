@@ -56,6 +56,16 @@ public class FreePlayPlayerData extends PlayerData
         }
     }
 
+    /**
+     * Freeplay does not apply a carrying-weight cap. Returning the maximum
+     * float also prevents the overweight movement penalty in updateSpeedCoef().
+     */
+    @Override
+    public float getMaxWeight()
+    {
+        return Float.MAX_VALUE;
+    }
+
     private float updateSpeedCoef()
     {
         float value = 1.0f;
