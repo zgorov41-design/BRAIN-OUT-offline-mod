@@ -510,9 +510,6 @@ public class MyPlayerComponent extends PlayerControllerComponentData
         if (poc == null)
             return false;
 
-        if (poc.getCurrentInstrumentRecord() == null)
-            return false;
-
         PlayerComponentData pc = getPlayerData().getComponent(PlayerComponentData.class);
         if (pc != null && pc.isPlayingCustomAnimation())
         {
@@ -899,7 +896,9 @@ public class MyPlayerComponent extends PlayerControllerComponentData
 
         if (poc.getCurrentInstrument() != null)
         {
-            if (poc.getCurrentInstrument().isForceSelect())
+            // A removed instrument must always be deselected. Keep the force-select
+            // restriction only for ordinary player-initiated switches.
+            if (switchTo != null && poc.getCurrentInstrument().isForceSelect())
             {
                 return;
             }
@@ -915,14 +914,23 @@ public class MyPlayerComponent extends PlayerControllerComponentData
                     {
                         case reloadingBoth:
                         {
-                            // can't escape this
-                            return;
+                            // Do not block deselection when the current instrument was removed
+                            // from inventory (for example, moved to the offline stash).
+                            if (switchTo != null)
+                            {
+                                return;
+                            }
+                            break;
                         }
                         case loadMagazineRound:
                         {
                             mwp.getCurrentSlot().stopLoadingBullets();
-                            BrainOutClient.ClientController.sendTCP(new SelectInstrumentMsg(switchTo));
-                            return;
+                            if (switchTo != null)
+                            {
+                                BrainOutClient.ClientController.sendTCP(new SelectInstrumentMsg(switchTo));
+                                return;
+                            }
+                            break;
                         }
                     }
                 }
