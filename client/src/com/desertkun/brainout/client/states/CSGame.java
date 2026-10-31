@@ -1946,6 +1946,7 @@ public class CSGame extends ControllerState
             if (owner != null)
             {
                 LocalOfflineMarketStorage.reconcilePendingDeposits(owner.getConsumableContainer());
+                LocalOfflineMarketStorage.reconcilePendingWithdrawals(owner.getConsumableContainer());
             }
         }
 
