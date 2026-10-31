@@ -204,7 +204,8 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
         return true;
     }
 
-    private boolean putItemIntoMarket(ConsumableRecord record, int amount, MarketItemsInventoryPanel market)
+    private boolean putItemIntoMarket(ConsumableRecord record, int amount,
+                                      MarketItemsInventoryPanel market, InventoryPanel sourcePanel)
     {
 
         int am = BrainOut.OnlineEnabled() ? Math.min(market.canFitAnItem(record), amount) : amount;
@@ -238,6 +239,7 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
                 .getComponent(InventoryMoveSoundComponent.class);
             if (snd != null) snd.play(playerData);
             market.refresh();
+            if (sourcePanel != null) sourcePanel.refresh();
             return true;
         }
 
@@ -275,7 +277,8 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
     }
 
     private boolean withdrawItemFromMarket(
-        MarketItemsInventoryPanel.MarketInventoryRecord record, int amount, MarketItemsInventoryPanel market)
+        MarketItemsInventoryPanel.MarketInventoryRecord record, int amount,
+        MarketItemsInventoryPanel market, InventoryPanel targetPanel)
     {
         Content c = record.getRecord().getItem().getContent();
         if (c == null)
@@ -296,6 +299,7 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
             InventoryMoveSoundComponent snd = c.getComponent(InventoryMoveSoundComponent.class);
             if (snd != null) snd.play(playerData);
             market.refresh();
+            if (targetPanel != null) targetPanel.refresh();
             return true;
         }
 
@@ -339,7 +343,8 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
         {
             if (to instanceof MarketItemsInventoryPanel)
             {
-                return putItemIntoMarket(record.getRecord(), amount, (MarketItemsInventoryPanel) to);
+                return putItemIntoMarket(record.getRecord(), amount,
+                    (MarketItemsInventoryPanel) to, from);
             }
         }
         else if ((from instanceof FoundItemsInventoryPanel) && (to instanceof ConsumableInventoryPanel))
@@ -366,7 +371,7 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
 
                 if (amount == 1 || found.getRecord().getItem() instanceof InstrumentConsumableItem || u != null)
                 {
-                    return withdrawItemFromMarket(found, 1, (MarketItemsInventoryPanel) from);
+                    return withdrawItemFromMarket(found, 1, (MarketItemsInventoryPanel) from, to);
                 }
                 else
                 {
@@ -374,7 +379,7 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
                     {
                         if (record.getRecord().getAmount() == 2)
                         {
-                            return withdrawItemFromMarket(found, 1, (MarketItemsInventoryPanel) from);
+                            return withdrawItemFromMarket(found, 1, (MarketItemsInventoryPanel) from, to);
                         }
                         else
                         {
@@ -385,7 +390,7 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
                                 @Override
                                 public void approve(int amount)
                                 {
-                                    withdrawItemFromMarket(found, amount, (MarketItemsInventoryPanel) from);
+                                    withdrawItemFromMarket(found, amount, (MarketItemsInventoryPanel) from, to);
                                 }
 
                                 @Override
@@ -400,7 +405,7 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
                     }
                     else
                     {
-                        return withdrawItemFromMarket(found, amount, (MarketItemsInventoryPanel) from);
+                        return withdrawItemFromMarket(found, amount, (MarketItemsInventoryPanel) from, to);
                     }
                 }
             }
@@ -661,7 +666,7 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
                         }
                     });
                 }
-                else
+                else if (BrainOut.OnlineEnabled())
                 {
                     Tooltip.RegisterToolTip(market, new UnlockTooltip.UnlockTooltipCreator(
                         marketPass, BrainOutClient.ClientController.getUserProfile()
