@@ -58,6 +58,7 @@ import com.desertkun.brainout.playstate.ClientPSGame;
 import com.desertkun.brainout.playstate.PlayState;
 import com.desertkun.brainout.playstate.PlayStateGame;
 import com.desertkun.brainout.utils.Compressor;
+import com.desertkun.brainout.utils.LocalOfflineMarketStorage;
 import com.esotericsoftware.minlog.Log;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -1935,8 +1936,20 @@ public class CSGame extends ControllerState
 
     public void onSpawned(PlayerData playerData)
     {
-        setState(State.spawned);
+        // Offline Freeplay can recreate the player's inventory from the zone/loadout
+        // when entering a new area. Apply any saved stash transfers to that fresh
+        // inventory once, so a deposited stack is not restored as a duplicate.
+        if (!BrainOut.OnlineEnabled() && playerData != null
+            && playerData.getMap() instanceof com.desertkun.brainout.data.FreePlayMap)
+        {
+            PlayerOwnerComponent owner = playerData.getComponent(PlayerOwnerComponent.class);
+            if (owner != null)
+            {
+                LocalOfflineMarketStorage.reconcilePendingDeposits(owner.getConsumableContainer());
+            }
+        }
 
+        setState(State.spawned);
         setPlayerData(playerData);
     }
 
