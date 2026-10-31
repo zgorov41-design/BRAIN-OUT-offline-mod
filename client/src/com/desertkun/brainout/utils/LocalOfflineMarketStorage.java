@@ -219,8 +219,18 @@ public final class LocalOfflineMarketStorage
             return false;
         }
 
-        JSONArray previous = load();
-        JSONArray updated = new JSONArray(previous.toString());
+        final JSONArray previous;
+        final JSONArray updated;
+        try
+        {
+            previous = load();
+            updated = new JSONArray(previous.toString());
+        }
+        catch (Exception e)
+        {
+            Gdx.app.error("OfflineStash", "Deposit rejected: local stash could not be read.", e);
+            return false;
+        }
 
         try
         {
@@ -288,8 +298,19 @@ public final class LocalOfflineMarketStorage
             return false;
         }
 
-        JSONArray previous = load();
-        JSONArray updated = new JSONArray(previous.toString());
+        final JSONArray previous;
+        final JSONArray updated;
+        try
+        {
+            previous = load();
+            updated = new JSONArray(previous.toString());
+        }
+        catch (Exception e)
+        {
+            Gdx.app.error("OfflineStash", "Withdrawal rejected: local stash could not be read.", e);
+            return false;
+        }
+
         int index = findStoredItem(updated, entry.name, entry.payload);
 
         if (index < 0)
