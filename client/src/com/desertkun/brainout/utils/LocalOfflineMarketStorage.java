@@ -252,6 +252,7 @@ public final class LocalOfflineMarketStorage
             return false;
         }
 
+        int sourceAmountBefore = record.getAmount();
         try
         {
             ConsumableContainer.AcquiredConsumables acquired =
@@ -259,30 +260,48 @@ public final class LocalOfflineMarketStorage
 
             if (acquired == null || acquired.amount != amount)
             {
-                // Restore the previous stash if inventory extraction was incomplete.
+                // The validated record should always provide the full requested amount.
                 save(previous);
                 Gdx.app.error("OfflineStash", "Deposit rolled back: inventory extraction was incomplete.");
                 return false;
             }
-
-            source.updateWeight();
-            Gdx.app.log("OfflineStash", "Deposited " + amount + " x " + entry.name);
-            return true;
         }
         catch (Exception e)
         {
-            try
+            // If extraction changed the source before throwing, keep the durable stash
+            // copy rather than rolling it back and potentially losing the item.
+            boolean sourceChanged = source.get(record.getId()) != record
+                || record.getAmount() != sourceAmountBefore;
+
+            if (!sourceChanged)
             {
-                save(previous);
-            }
-            catch (Exception rollbackError)
-            {
-                Gdx.app.error("OfflineStash", "Could not roll back a failed deposit.", rollbackError);
+                try
+                {
+                    save(previous);
+                }
+                catch (Exception rollbackError)
+                {
+                    Gdx.app.error("OfflineStash", "Could not roll back a failed deposit.", rollbackError);
+                }
             }
 
-            Gdx.app.error("OfflineStash", "Deposit failed; stash write was rolled back.", e);
-            return false;
+            Gdx.app.error("OfflineStash", "Inventory extraction failed during local deposit.", e);
+            return sourceChanged;
         }
+
+        try
+        {
+            source.updateWeight();
+        }
+        catch (Exception e)
+        {
+            // The item has already been moved and saved. A display-weight error must
+            // not remove its only durable copy.
+            Gdx.app.error("OfflineStash", "Deposited item, but inventory weight update failed.", e);
+        }
+
+        Gdx.app.log("OfflineStash", "Deposited " + amount + " x " + entry.name);
+        return true;
     }
 
     /**
