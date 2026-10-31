@@ -30,12 +30,8 @@ public final class LocalOfflineMarketStorage
     private static Preferences preferences()
     {
         String profile = BrainOut.Env != null ? BrainOut.Env.getUniqueId() : null;
-        if (profile == null || profile.isEmpty())
-        {
-            profile = "default";
-        }
-
-        return Gdx.app.getPreferences(PREFERENCES_PREFIX + profile);
+        // Keep the old "null" suffix for installations whose environment has no profile ID.
+        return Gdx.app.getPreferences(PREFERENCES_PREFIX + String.valueOf(profile));
     }
 
     private static JSONArray load()
@@ -179,8 +175,12 @@ public final class LocalOfflineMarketStorage
                 if (matchingIndex >= 0)
                 {
                     MarketService.MarketItemEntry existing = result.get(matchingIndex);
-                    result.set(matchingIndex, new MarketService.MarketItemEntry(
-                        name, existing.amount + amount, payload));
+                    long mergedAmount = (long) existing.amount + amount;
+                    if (mergedAmount <= Integer.MAX_VALUE)
+                    {
+                        result.set(matchingIndex, new MarketService.MarketItemEntry(
+                            name, (int) mergedAmount, payload));
+                    }
                 }
                 else
                 {
@@ -229,6 +229,15 @@ public final class LocalOfflineMarketStorage
         }
         catch (Exception e)
         {
+            try
+            {
+                save(previous);
+            }
+            catch (Exception rollbackError)
+            {
+                Gdx.app.error("OfflineStash", "Could not restore stash after a failed deposit write.", rollbackError);
+            }
+
             Gdx.app.error("OfflineStash", "Could not save item to local stash.", e);
             return false;
         }
@@ -339,6 +348,15 @@ public final class LocalOfflineMarketStorage
             {
                 target.removeRecord(restored);
                 target.updateWeight();
+            }
+
+            try
+            {
+                save(previous);
+            }
+            catch (Exception rollbackError)
+            {
+                Gdx.app.error("OfflineStash", "Could not restore stash after a failed withdrawal write.", rollbackError);
             }
 
             Gdx.app.error("OfflineStash", "Could not commit local stash withdrawal.", e);
