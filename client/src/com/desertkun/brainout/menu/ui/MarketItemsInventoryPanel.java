@@ -71,7 +71,9 @@ public class MarketItemsInventoryPanel extends TargetInventoryPanel
 
         this.itemsCategory = itemsCategory;
         this.placeInto = marketContainer;
-        this.marketContainer = marketContainer.getComponent(ClientMarketContainerComponentData.class);
+        this.marketContainer = marketContainer != null
+            ? marketContainer.getComponent(ClientMarketContainerComponentData.class)
+            : null;
     }
 
     public ClientMarketContainerComponentData getMarketContainer()
@@ -194,6 +196,11 @@ public class MarketItemsInventoryPanel extends TargetInventoryPanel
     {
         ItemComponent itemComponent = record.getItem().getContent().getComponent(ItemComponent.class);
 
+        if (marketContainer == null || placeInto == null)
+        {
+            return record.getAmount();
+        }
+
         UserProfile profile = BrainOutClient.ClientController.getUserProfile();
         Active containerContent = ((ActiveData)marketContainer.getComponentObject()).getCreator();
         float maxWeight = MarketUtils.GetMaxMarketWeightForPlayer(containerContent, profile,
@@ -230,7 +237,9 @@ public class MarketItemsInventoryPanel extends TargetInventoryPanel
     @Override
     public String getTitle()
     {
-        return marketContainer.getContentComponent().getTitle().get();
+        return marketContainer != null
+            ? marketContainer.getContentComponent().getTitle().get()
+            : L.get("MENU_FREEPLAY_STASH");
     }
 
     public String getMarket()
@@ -292,6 +301,12 @@ public class MarketItemsInventoryPanel extends TargetInventoryPanel
         }
 
         maxWeight += addWeight;
+
+        // A standalone offline stash has no map container to provide a weight limit.
+        if (!BrainOut.OnlineEnabled() && maxWeight <= 0)
+        {
+            return 500.0f;
+        }
 
         return maxWeight;
     }
