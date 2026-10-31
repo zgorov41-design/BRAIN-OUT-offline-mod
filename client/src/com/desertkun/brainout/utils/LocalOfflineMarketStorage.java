@@ -12,37 +12,125 @@ import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Local, persistent storage for the offline market stash. */
+/**
+ * Persistent, profile-local storage for Freeplay items.
+ *
+ * The JSON format is deliberately kept compatible with earlier versions:
+ * each entry contains name, payload (as JSON text) and amount.
+ */
 public final class LocalOfflineMarketStorage
 {
     private static final String KEY = "items";
+    private static final String PREFERENCES_PREFIX = "brainout-offline-stash-";
 
-    private LocalOfflineMarketStorage() {}
+    private LocalOfflineMarketStorage()
+    {
+    }
 
     private static Preferences preferences()
     {
-        String profile = BrainOut.Env.getUniqueId();
-        return Gdx.app.getPreferences("brainout-offline-stash-" + profile);
+        String profile = BrainOut.Env != null ? BrainOut.Env.getUniqueId() : null;
+        if (profile == null || profile.isEmpty())
+        {
+            profile = "default";
+        }
+
+        return Gdx.app.getPreferences(PREFERENCES_PREFIX + profile);
     }
 
     private static JSONArray load()
     {
         try
         {
-            return new JSONArray(preferences().getString(KEY, "[]"));
+            String value = preferences().getString(KEY, "[]");
+            return new JSONArray(value);
         }
         catch (Exception e)
         {
-            Gdx.app.error("OfflineStash", "Could not read local stash; starting empty.", e);
+            Gdx.app.error("OfflineStash", "Could not read local stash; using an empty list.", e);
             return new JSONArray();
         }
     }
 
     private static void save(JSONArray items)
     {
-        Preferences preferences = preferences();
-        preferences.putString(KEY, items.toString());
-        preferences.flush();
+        Preferences prefs = preferences();
+        prefs.putString(KEY, items.toString());
+        prefs.flush();
+    }
+
+    private static JSONObject readPayload(JSONObject stored)
+    {
+        Object value = stored.opt("payload");
+
+        if (value instanceof JSONObject)
+        {
+            return new JSONObject(value.toString());
+        }
+
+        if (value instanceof String)
+        {
+            return new JSONObject((String) value);
+        }
+
+        return null;
+    }
+
+    private static boolean samePayload(JSONObject first, JSONObject second)
+    {
+        if (first == null || second == null)
+        {
+            return false;
+        }
+
+        try
+        {
+            return new JSONObject(first.toString()).toString()
+                .equals(new JSONObject(second.toString()).toString());
+        }
+        catch (Exception ignored)
+        {
+            return false;
+        }
+    }
+
+    private static int findStoredItem(JSONArray items, String name, JSONObject payload)
+    {
+        for (int i = 0; i < items.length(); i++)
+        {
+            JSONObject stored = items.optJSONObject(i);
+            if (stored == null || !name.equals(stored.optString("name", "")))
+            {
+                continue;
+            }
+
+            if (samePayload(readPayload(stored), payload))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static void mergeItem(JSONArray items, String name, JSONObject payload, int amount)
+    {
+        int index = findStoredItem(items, name, payload);
+
+        if (index >= 0)
+        {
+            JSONObject stored = items.optJSONObject(index);
+            stored.put("amount", stored.optInt("amount", 0) + amount);
+            // Normalize legacy payload objects back to the existing string format.
+            stored.put("payload", payload.toString());
+            return;
+        }
+
+        JSONObject stored = new JSONObject();
+        stored.put("name", name);
+        stored.put("payload", payload.toString());
+        stored.put("amount", amount);
+        items.put(stored);
     }
 
     public static synchronized List<MarketService.MarketItemEntry> getItems()
@@ -55,17 +143,36 @@ public final class LocalOfflineMarketStorage
             try
             {
                 JSONObject stored = items.getJSONObject(i);
-                String name = stored.getString("name");
-                String payloadText = stored.getString("payload");
-                int amount = stored.getInt("amount");
-                if (amount <= 0) continue;
+                String name = stored.optString("name", "");
+                int amount = stored.optInt("amount", 0);
+                JSONObject payload = readPayload(stored);
 
-                ConsumableRecord record = MarketUtils.MarketObjectToConsumableRecord(
-                    name, new JSONObject(payloadText), amount);
-                if (record == null) continue;
+                if (name.isEmpty() || amount <= 0 || payload == null)
+                {
+                    continue;
+                }
 
-                MarketService.MarketItemEntry entry = MarketUtils.ConsumableRecordToMarketEntry(record);
-                if (entry != null) result.add(entry);
+                int matchingIndex = -1;
+                for (int j = 0; j < result.size(); j++)
+                {
+                    MarketService.MarketItemEntry existing = result.get(j);
+                    if (name.equals(existing.name) && samePayload(existing.payload, payload))
+                    {
+                        matchingIndex = j;
+                        break;
+                    }
+                }
+
+                if (matchingIndex >= 0)
+                {
+                    MarketService.MarketItemEntry existing = result.get(matchingIndex);
+                    result.set(matchingIndex, new MarketService.MarketItemEntry(
+                        name, existing.amount + amount, payload));
+                }
+                else
+                {
+                    result.add(new MarketService.MarketItemEntry(name, amount, payload));
+                }
             }
             catch (Exception e)
             {
@@ -76,25 +183,17 @@ public final class LocalOfflineMarketStorage
         return result;
     }
 
+    /**
+     * Saves the item before removing it from the player's inventory. This way a
+     * failed local write cannot silently destroy the player's item.
+     */
     public static synchronized boolean deposit(ConsumableRecord record, int amount,
                                                 ConsumableContainer source)
     {
-        if (record == null)
+        if (record == null || source == null || record.getItem() == null
+            || record.getItem().getContent() == null || amount <= 0
+            || record.getAmount() < amount || source.get(record.getId()) != record)
         {
-            Gdx.app.error("OfflineStash", "Deposit rejected: record is null.");
-            return false;
-        }
-
-        if (source == null)
-        {
-            Gdx.app.error("OfflineStash", "Deposit rejected: source container is null.");
-            return false;
-        }
-
-        if (amount <= 0 || record.getAmount() < amount)
-        {
-            Gdx.app.error("OfflineStash", "Deposit rejected: invalid amount="
-                + amount + ", record amount=" + record.getAmount());
             return false;
         }
 
@@ -103,114 +202,134 @@ public final class LocalOfflineMarketStorage
 
         if (entry == null || entry.name == null || entry.payload == null)
         {
-            String itemClass = record.getItem() == null
-                ? "null" : record.getItem().getClass().getName();
-
-            String contentId = record.getItem() == null
-                || record.getItem().getContent() == null
-                ? "null" : record.getItem().getContent().getID();
-
-            Gdx.app.error("OfflineStash", "Deposit rejected: unsupported item. class="
-                + itemClass + ", content=" + contentId);
+            Gdx.app.error("OfflineStash", "Deposit rejected: item cannot be serialized.");
             return false;
         }
 
-        ConsumableContainer.AcquiredConsumables acquired =
-            source.getConsumable(amount, record);
+        JSONArray previous = load();
+        JSONArray updated = new JSONArray(previous.toString());
 
-        if (acquired == null)
-        {
-            Gdx.app.error("OfflineStash", "Deposit rejected: extraction returned null.");
-            return false;
-        }
-
-        JSONArray items = load();
-        JSONObject stored = new JSONObject();
-        stored.put("name", entry.name);
-        stored.put("payload", entry.payload.toString());
-        stored.put("amount", amount);
-        items.put(stored);
-        save(items);
-
-        Gdx.app.log("OfflineStash", "Deposit saved: " + entry.name
-            + ", amount=" + amount);
-
-        return true;
-    }
-    public static synchronized boolean withdraw(MarketService.MarketItemEntry entry, int amount,
-                                                 ConsumableContainer target)
-    {
-        if (entry == null || entry.name == null || entry.payload == null || target == null || amount <= 0)
-            return false;
-
-        String requestedPayload = entry.payload.toString();
-        JSONArray items = load();
-
-        for (int i = 0; i < items.length(); i++)
-        {
-            JSONObject stored;
-            try
-            {
-                stored = items.getJSONObject(i);
-            }
-            catch (Exception ignored)
-            {
-                continue;
-            }
-
-            try
-            {
-                if (!entry.name.equals(stored.getString("name"))) continue;
-                String payloadText = stored.getString("payload");
-                if (!samePayload(payloadText, requestedPayload)) continue;
-
-                int storedAmount = stored.getInt("amount");
-                if (storedAmount < amount) return false;
-
-                ConsumableRecord restored = MarketUtils.MarketObjectToConsumableRecord(
-                    entry.name, new JSONObject(payloadText), amount);
-                if (restored == null || restored.getItem() == null) return false;
-
-                // IDs in the stash and player inventory are separate, so allocate a fresh inventory ID.
-                restored.setId(target.newId());
-                target.addRecord(restored);
-
-                if (storedAmount == amount)
-                {
-                    JSONArray remaining = new JSONArray();
-                    for (int j = 0; j < items.length(); j++)
-                    {
-                        if (j != i) remaining.put(items.get(j));
-                    }
-                    items = remaining;
-                }
-                else
-                {
-                    stored.put("amount", storedAmount - amount);
-                }
-
-                save(items);
-                return true;
-            }
-            catch (Exception e)
-            {
-                Gdx.app.error("OfflineStash", "Could not withdraw local stash entry.", e);
-                return false;
-            }
-        }
-
-        return false;
-    }
-
-    private static boolean samePayload(String first, String second)
-    {
         try
         {
-            return new JSONObject(first).toString().equals(new JSONObject(second).toString());
+            mergeItem(updated, entry.name, entry.payload, amount);
+            save(updated);
         }
-        catch (Exception ignored)
+        catch (Exception e)
         {
-            return first.equals(second);
+            Gdx.app.error("OfflineStash", "Could not save item to local stash.", e);
+            return false;
+        }
+
+        try
+        {
+            ConsumableContainer.AcquiredConsumables acquired =
+                source.getConsumable(amount, record);
+
+            if (acquired == null || acquired.amount != amount)
+            {
+                // Restore the previous stash if inventory extraction was incomplete.
+                save(previous);
+                Gdx.app.error("OfflineStash", "Deposit rolled back: inventory extraction was incomplete.");
+                return false;
+            }
+
+            source.updateWeight();
+            Gdx.app.log("OfflineStash", "Deposited " + amount + " x " + entry.name);
+            return true;
+        }
+        catch (Exception e)
+        {
+            try
+            {
+                save(previous);
+            }
+            catch (Exception rollbackError)
+            {
+                Gdx.app.error("OfflineStash", "Could not roll back a failed deposit.", rollbackError);
+            }
+
+            Gdx.app.error("OfflineStash", "Deposit failed; stash write was rolled back.", e);
+            return false;
+        }
+    }
+
+    /**
+     * Adds the restored item to the inventory first, then commits the reduced
+     * stash. If the disk write fails, the newly added inventory record is removed.
+     */
+    public static synchronized boolean withdraw(MarketService.MarketItemEntry entry, int amount,
+                                                  ConsumableContainer target)
+    {
+        if (entry == null || entry.name == null || entry.payload == null
+            || target == null || amount <= 0)
+        {
+            return false;
+        }
+
+        JSONArray previous = load();
+        JSONArray updated = new JSONArray(previous.toString());
+        int index = findStoredItem(updated, entry.name, entry.payload);
+
+        if (index < 0)
+        {
+            return false;
+        }
+
+        JSONObject stored = updated.optJSONObject(index);
+        int storedAmount = stored != null ? stored.optInt("amount", 0) : 0;
+
+        if (storedAmount < amount)
+        {
+            return false;
+        }
+
+        ConsumableRecord restored;
+        try
+        {
+            JSONObject payload = readPayload(stored);
+            restored = MarketUtils.MarketObjectToConsumableRecord(entry.name, payload, amount);
+        }
+        catch (Exception e)
+        {
+            Gdx.app.error("OfflineStash", "Could not recreate item from local stash.", e);
+            return false;
+        }
+
+        if (restored == null || restored.getItem() == null)
+        {
+            return false;
+        }
+
+        if (storedAmount == amount)
+        {
+            updated.remove(index);
+        }
+        else
+        {
+            stored.put("amount", storedAmount - amount);
+        }
+
+        restored.setId(target.newId());
+
+        try
+        {
+            target.addRecord(restored);
+            target.updateWeight();
+            save(updated);
+            Gdx.app.log("OfflineStash", "Withdrew " + amount + " x " + entry.name);
+            return true;
+        }
+        catch (Exception e)
+        {
+            // Do not leave a duplicate in the player's inventory if persistence failed.
+            if (target.get(restored.getId()) == restored)
+            {
+                target.removeRecord(restored);
+                target.updateWeight();
+            }
+
+            Gdx.app.error("OfflineStash", "Could not commit local stash withdrawal.", e);
+            return false;
         }
     }
 }
