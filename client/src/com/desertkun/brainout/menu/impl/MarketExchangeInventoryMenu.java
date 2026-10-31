@@ -26,6 +26,7 @@ import com.desertkun.brainout.data.consumable.ConsumableRecord;
 import com.desertkun.brainout.menu.Menu;
 import com.desertkun.brainout.menu.popups.AlertPopup;
 import com.desertkun.brainout.menu.ui.*;
+import com.desertkun.brainout.utils.StringFunctions;
 import com.esotericsoftware.minlog.Log;
 import org.json.JSONObject;
 
@@ -72,8 +73,38 @@ public class MarketExchangeInventoryMenu extends ExchangeInventoryMenu
                 0, playerData.getMaxOverweight(), 0.05f, false,
                 BrainOutClient.Skin, "progress-inventory");
 
-        b.add(targetFill).expandX().fillX().padTop(-2).row();
-        targetPanel.setHeight(targetPanel.getHeight() - targetWeightRoot.getHeight() - targetFill.getHeight());
+        if (BrainOut.OnlineEnabled())
+        {
+            b.add(targetFill).expandX().fillX().padTop(-2).row();
+            targetPanel.setHeight(targetPanel.getHeight() - targetWeightRoot.getHeight() - targetFill.getHeight());
+        }
+        else
+        {
+            // The local Freeplay stash has no weight limit.
+            targetPanel.setHeight(targetPanel.getHeight() - targetWeightRoot.getHeight());
+        }
+    }
+
+    @Override
+    protected void updateTargetWeight(float weight, float maxWeight)
+    {
+        if (BrainOut.OnlineEnabled())
+        {
+            super.updateTargetWeight(weight, maxWeight);
+            return;
+        }
+
+        if (targetWeightRoot != null && targetWeighInfo != null)
+        {
+            targetWeighInfo.setText(StringFunctions.format(
+                (float)(int)(weight * 100.0f) / 100.0f
+            ) + " / ∞ " + L.get("CHAR_SUFFIX_KG"));
+        }
+
+        if (targetWeightUpgrades != null)
+        {
+            targetWeightUpgrades.clear();
+        }
     }
 
     private boolean putItemIntoMarket(ConsumableRecord record, int amount,
