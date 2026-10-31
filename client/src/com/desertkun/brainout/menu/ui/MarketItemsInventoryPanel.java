@@ -194,6 +194,18 @@ public class MarketItemsInventoryPanel extends TargetInventoryPanel
 
     public int canFitAnItem(ConsumableRecord record)
     {
+        if (record == null || record.getItem() == null || record.getItem().getContent() == null)
+        {
+            return 0;
+        }
+
+        // The local Freeplay stash is intentionally unlimited. Online markets keep
+        // using the server-defined category weight rules below.
+        if (!BrainOut.OnlineEnabled())
+        {
+            return record.getAmount();
+        }
+
         ItemComponent itemComponent = record.getItem().getContent().getComponent(ItemComponent.class);
 
         if (marketContainer == null || placeInto == null)
@@ -268,6 +280,11 @@ public class MarketItemsInventoryPanel extends TargetInventoryPanel
 
     public float getMaxWeightForUser()
     {
+        if (!BrainOut.OnlineEnabled())
+        {
+            return Float.POSITIVE_INFINITY;
+        }
+
         if ("rs".equals(itemsCategory))
         {
             return 500;
