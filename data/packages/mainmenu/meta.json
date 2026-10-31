@@ -1,0 +1,27 @@
+{
+	"textures":
+	{
+		"output": "content/textures"
+	},
+	"localization":
+	{
+		"input": "input.json",
+		"output": "data/texts.json"
+	},
+	"export": 
+	{
+		"default": {
+			"exclude": [
+				"smart"
+			]
+		},
+		"server":
+		{
+			"build": false
+		},
+		"chserver":
+		{
+			"build": false
+		}
+	}
+}
