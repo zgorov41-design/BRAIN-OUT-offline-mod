@@ -515,6 +515,13 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
             return createMarketInventoryPanel(marketContainer);
         }
 
+        // Offline storage is local to the player and must not depend on a
+        // physical market container being present on the current map.
+        if (!BrainOut.OnlineEnabled())
+        {
+            return createMarketInventoryPanel(null);
+        }
+
         return null;
     }
 
