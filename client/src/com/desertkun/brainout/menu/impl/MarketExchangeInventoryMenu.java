@@ -18,6 +18,7 @@ import com.desertkun.brainout.content.components.ClientMarketContainerComponent;
 import com.desertkun.brainout.content.components.InventoryMoveSoundComponent;
 import com.desertkun.brainout.content.components.UniqueComponent;
 import com.desertkun.brainout.content.consumable.CustomConsumableItem;
+import com.desertkun.brainout.components.PlayerOwnerComponent;
 import com.desertkun.brainout.content.consumable.impl.InstrumentConsumableItem;
 import com.desertkun.brainout.data.active.ActiveData;
 import com.desertkun.brainout.data.active.PlayerData;
@@ -75,30 +76,28 @@ public class MarketExchangeInventoryMenu extends ExchangeInventoryMenu
         targetPanel.setHeight(targetPanel.getHeight() - targetWeightRoot.getHeight() - targetFill.getHeight());
     }
 
-    private boolean putItemIntoMarket(ConsumableRecord record, int amount, MarketItemsInventoryPanel market)
+    private boolean putItemIntoMarket(ConsumableRecord record, int amount,
+                                      MarketItemsInventoryPanel market, InventoryPanel source)
     {
-        int am = Math.min(market.canFitAnItem(record), amount);
+        int am = BrainOut.OnlineEnabled()
+            ? Math.min(market.canFitAnItem(record), amount)
+            : amount;
 
         if (am == 0)
         {
             return false;
         }
 
-	if (!BrainOut.OnlineEnabled())
+        if (!BrainOut.OnlineEnabled())
         {
-            ActiveData storage = market.getPlaceInto();
+            PlayerOwnerComponent owner = playerData.getComponent(PlayerOwnerComponent.class);
 
-            if (!(storage instanceof com.desertkun.brainout.data.active.ItemData))
+            if (owner == null || !com.desertkun.brainout.utils.LocalOfflineMarketStorage.deposit(
+                record, am, owner.getConsumableContainer()))
             {
                 Menu.playSound(MenuSound.denied);
                 return false;
             }
-
-            BrainOutClient.ClientController.sendTCP(
-                new com.desertkun.brainout.common.msg.client.PutRecordIntoItemMsg(
-                    storage.getId(), record, am
-                )
-            );
 
             InventoryMoveSoundComponent snd =
                 record.getItem().getContent().getComponent(InventoryMoveSoundComponent.class);
@@ -108,18 +107,8 @@ public class MarketExchangeInventoryMenu extends ExchangeInventoryMenu
                 snd.play(playerData);
             }
 
-            com.badlogic.gdx.utils.Timer.schedule(
-                new com.badlogic.gdx.utils.Timer.Task()
-                {
-                    @Override
-                    public void run()
-                    {
-                        market.refresh();
-                    }
-                },
-                0.5f
-            );
-
+            market.refresh();
+            if (source != null) source.refresh();
             return true;
         }
 
@@ -157,7 +146,8 @@ public class MarketExchangeInventoryMenu extends ExchangeInventoryMenu
     }
 
     private boolean withdrawItemFromMarket(
-            MarketItemsInventoryPanel.MarketInventoryRecord record, int amount, MarketItemsInventoryPanel market)
+            MarketItemsInventoryPanel.MarketInventoryRecord record, int amount,
+            MarketItemsInventoryPanel market, InventoryPanel target)
     {
         Content c = record.getRecord().getItem().getContent();
         if (c == null)
@@ -173,42 +163,25 @@ public class MarketExchangeInventoryMenu extends ExchangeInventoryMenu
         }
          */
 	
-	if (!BrainOut.OnlineEnabled())
+        if (!BrainOut.OnlineEnabled())
         {
-            ActiveData storage = market.getPlaceInto();
+            PlayerOwnerComponent owner = playerData.getComponent(PlayerOwnerComponent.class);
 
-            if (!(storage instanceof com.desertkun.brainout.data.active.ItemData))
+            if (owner == null || !com.desertkun.brainout.utils.LocalOfflineMarketStorage.withdraw(
+                record.getMarketEntry(), amount, owner.getConsumableContainer()))
             {
                 Menu.playSound(MenuSound.denied);
                 return false;
             }
 
-            BrainOutClient.ClientController.sendTCP(
-                new com.desertkun.brainout.common.msg.client.TakeRecordFromItemMsg(
-                    storage.getId(), record.getRecord(), amount
-                )
-            );
-
-            InventoryMoveSoundComponent snd =
-                c.getComponent(InventoryMoveSoundComponent.class);
-
+            InventoryMoveSoundComponent snd = c.getComponent(InventoryMoveSoundComponent.class);
             if (snd != null)
             {
                 snd.play(playerData);
             }
 
-            com.badlogic.gdx.utils.Timer.schedule(
-                new com.badlogic.gdx.utils.Timer.Task()
-                {
-                    @Override
-                    public void run()
-                    {
-                        market.refresh();
-                    }
-                },
-                0.5f
-            );
-
+            market.refresh();
+            if (target != null) target.refresh();
             return true;
         }
 
@@ -252,7 +225,8 @@ public class MarketExchangeInventoryMenu extends ExchangeInventoryMenu
         {
             if (to instanceof MarketItemsInventoryPanel)
             {
-                return putItemIntoMarket(record.getRecord(), amount, (MarketItemsInventoryPanel) to);
+                return putItemIntoMarket(record.getRecord(), amount,
+                    (MarketItemsInventoryPanel) to, from);
             }
         }
         else if ((from instanceof MarketItemsInventoryPanel) && (to instanceof ConsumableInventoryPanel))
@@ -266,7 +240,7 @@ public class MarketExchangeInventoryMenu extends ExchangeInventoryMenu
 
                 if (amount == 1 || found.getRecord().getItem() instanceof InstrumentConsumableItem || u != null)
                 {
-                    return withdrawItemFromMarket(found, 1, (MarketItemsInventoryPanel) from);
+                    return withdrawItemFromMarket(found, 1, (MarketItemsInventoryPanel) from, to);
                 }
                 else
                 {
@@ -274,7 +248,7 @@ public class MarketExchangeInventoryMenu extends ExchangeInventoryMenu
                     {
                         if (record.getRecord().getAmount() == 2)
                         {
-                            return withdrawItemFromMarket(found, 1, (MarketItemsInventoryPanel) from);
+                            return withdrawItemFromMarket(found, 1, (MarketItemsInventoryPanel) from, to);
                         }
                         else
                         {
@@ -285,7 +259,7 @@ public class MarketExchangeInventoryMenu extends ExchangeInventoryMenu
                                 @Override
                                 public void approve(int amount)
                                 {
-                                    withdrawItemFromMarket(found, amount, (MarketItemsInventoryPanel) from);
+                                    withdrawItemFromMarket(found, amount, (MarketItemsInventoryPanel) from, to);
                                 }
 
                                 @Override
@@ -300,7 +274,7 @@ public class MarketExchangeInventoryMenu extends ExchangeInventoryMenu
                     }
                     else
                     {
-                        return withdrawItemFromMarket(found, amount, (MarketItemsInventoryPanel) from);
+                        return withdrawItemFromMarket(found, amount, (MarketItemsInventoryPanel) from, to);
                     }
                 }
             }
@@ -398,9 +372,12 @@ public class MarketExchangeInventoryMenu extends ExchangeInventoryMenu
                         BrainOutClient.Skin, "button-checkable-market");
 
                 market.getLabel().setWrap(true);
-                market.setDisabled(!marketUnlocked);
 
-                if (marketUnlocked)
+                boolean onlineMarketAvailable = BrainOut.OnlineEnabled() && marketUnlocked;
+                market.setDisabled(!onlineMarketAvailable);
+                market.setVisible(BrainOut.OnlineEnabled());
+
+                if (onlineMarketAvailable)
                 {
                     dragAndDrop.addTarget(new DragAndDrop.Target(market)
                     {
@@ -480,7 +457,7 @@ public class MarketExchangeInventoryMenu extends ExchangeInventoryMenu
                         }
                     });
                 }
-                else
+                else if (BrainOut.OnlineEnabled())
                 {
                     Tooltip.RegisterToolTip(market, new UnlockTooltip.UnlockTooltipCreator(
                             marketPass, BrainOutClient.ClientController.getUserProfile()

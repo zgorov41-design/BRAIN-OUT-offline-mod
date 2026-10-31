@@ -204,9 +204,9 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
         return true;
     }
 
-    private boolean putItemIntoMarket(ConsumableRecord record, int amount, MarketItemsInventoryPanel market)
+    private boolean putItemIntoMarket(ConsumableRecord record, int amount,
+                                      MarketItemsInventoryPanel market, InventoryPanel sourcePanel)
     {
-        com.badlogic.gdx.Gdx.app.error("OfflineStashTrace", "putItemIntoMarket called; online=" + BrainOut.OnlineEnabled() + ", amount=" + amount + ", recordNull=" + (record == null));
 
         int am = BrainOut.OnlineEnabled() ? Math.min(market.canFitAnItem(record), amount) : amount;
 
@@ -239,6 +239,7 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
                 .getComponent(InventoryMoveSoundComponent.class);
             if (snd != null) snd.play(playerData);
             market.refresh();
+            if (sourcePanel != null) sourcePanel.refresh();
             return true;
         }
 
@@ -276,7 +277,8 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
     }
 
     private boolean withdrawItemFromMarket(
-        MarketItemsInventoryPanel.MarketInventoryRecord record, int amount, MarketItemsInventoryPanel market)
+        MarketItemsInventoryPanel.MarketInventoryRecord record, int amount,
+        MarketItemsInventoryPanel market, InventoryPanel targetPanel)
     {
         Content c = record.getRecord().getItem().getContent();
         if (c == null)
@@ -297,6 +299,7 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
             InventoryMoveSoundComponent snd = c.getComponent(InventoryMoveSoundComponent.class);
             if (snd != null) snd.play(playerData);
             market.refresh();
+            if (targetPanel != null) targetPanel.refresh();
             return true;
         }
 
@@ -335,13 +338,13 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
 
     private boolean move(InventoryPanel.InventoryRecord record, int amount, InventoryPanel from, InventoryPanel to)
     {
-        com.badlogic.gdx.Gdx.app.error("OfflineStashTrace", "move called; online=" + BrainOut.OnlineEnabled() + ", from=" + (from == null ? "null" : from.getClass().getName()) + ", to=" + (to == null ? "null" : to.getClass().getName()));
 
         if (from instanceof ConsumableInventoryPanel)
         {
             if (to instanceof MarketItemsInventoryPanel)
             {
-                return putItemIntoMarket(record.getRecord(), amount, (MarketItemsInventoryPanel) to);
+                return putItemIntoMarket(record.getRecord(), amount,
+                    (MarketItemsInventoryPanel) to, from);
             }
         }
         else if ((from instanceof FoundItemsInventoryPanel) && (to instanceof ConsumableInventoryPanel))
@@ -368,7 +371,7 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
 
                 if (amount == 1 || found.getRecord().getItem() instanceof InstrumentConsumableItem || u != null)
                 {
-                    return withdrawItemFromMarket(found, 1, (MarketItemsInventoryPanel) from);
+                    return withdrawItemFromMarket(found, 1, (MarketItemsInventoryPanel) from, to);
                 }
                 else
                 {
@@ -376,7 +379,7 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
                     {
                         if (record.getRecord().getAmount() == 2)
                         {
-                            return withdrawItemFromMarket(found, 1, (MarketItemsInventoryPanel) from);
+                            return withdrawItemFromMarket(found, 1, (MarketItemsInventoryPanel) from, to);
                         }
                         else
                         {
@@ -387,7 +390,7 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
                                 @Override
                                 public void approve(int amount)
                                 {
-                                    withdrawItemFromMarket(found, amount, (MarketItemsInventoryPanel) from);
+                                    withdrawItemFromMarket(found, amount, (MarketItemsInventoryPanel) from, to);
                                 }
 
                                 @Override
@@ -402,7 +405,7 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
                     }
                     else
                     {
-                        return withdrawItemFromMarket(found, amount, (MarketItemsInventoryPanel) from);
+                        return withdrawItemFromMarket(found, amount, (MarketItemsInventoryPanel) from, to);
                     }
                 }
             }
@@ -515,6 +518,13 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
             return createMarketInventoryPanel(marketContainer);
         }
 
+        // Offline storage is local to the player and must not depend on a
+        // physical market container being present on the current map.
+        if (!BrainOut.OnlineEnabled())
+        {
+            return createMarketInventoryPanel(null);
+        }
+
         return null;
     }
 
@@ -571,9 +581,12 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
                     BrainOutClient.Skin, "button-checkable-market");
 
                 market.getLabel().setWrap(true);
-                market.setDisabled(!marketUnlocked);
 
-                if (marketUnlocked)
+                boolean onlineMarketAvailable = BrainOut.OnlineEnabled() && marketUnlocked;
+                market.setDisabled(!onlineMarketAvailable);
+                market.setVisible(BrainOut.OnlineEnabled());
+
+                if (onlineMarketAvailable)
                 {
                     dragAndDrop.addTarget(new DragAndDrop.Target(market)
                     {
@@ -653,7 +666,7 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
                         }
                     });
                 }
-                else
+                else if (BrainOut.OnlineEnabled())
                 {
                     Tooltip.RegisterToolTip(market, new UnlockTooltip.UnlockTooltipCreator(
                         marketPass, BrainOutClient.ClientController.getUserProfile()
@@ -1104,6 +1117,49 @@ public class MarketItemsCategoryMenu extends Menu implements EventReceiver
 
             MarketItemsInventoryPanel.MarketInventoryRecord record =
                 (MarketItemsInventoryPanel.MarketInventoryRecord)inventoryItem.getRecord();
+
+            if (!BrainOut.OnlineEnabled())
+            {
+                int stashAmount = record.getRecord().getAmount();
+
+                if (stashAmount > 1)
+                {
+                    pushMenu(new AmountMenu(stashAmount, stashAmount)
+                    {
+                        @Override
+                        public void approve(int amount)
+                        {
+                            if (com.desertkun.brainout.utils.LocalOfflineMarketStorage.remove(
+                                record.getMarketEntry(), amount))
+                            {
+                                Menu.playSound(MenuSound.trash);
+                                market.refresh();
+                            }
+                            else
+                            {
+                                Menu.playSound(MenuSound.denied);
+                            }
+                        }
+
+                        @Override
+                        public void cancel()
+                        {
+                        }
+                    });
+                }
+                else if (com.desertkun.brainout.utils.LocalOfflineMarketStorage.remove(
+                    record.getMarketEntry(), stashAmount))
+                {
+                    Menu.playSound(MenuSound.trash);
+                    market.refresh();
+                }
+                else
+                {
+                    Menu.playSound(MenuSound.denied);
+                }
+
+                return;
+            }
 
             JSONObject args = new JSONObject();
             args.put("market", market.getMarket());
