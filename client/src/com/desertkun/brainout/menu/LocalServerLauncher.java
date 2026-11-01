@@ -10,6 +10,7 @@ import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.util.concurrent.TimeUnit;
 
 public final class LocalServerLauncher
 {
@@ -74,6 +75,27 @@ public final class LocalServerLauncher
         });
     }
 
+    private static void stopServer(Process process)
+    {
+        process.descendants().forEach(ProcessHandle::destroy);
+        process.destroy();
+
+        try
+        {
+            if (!process.waitFor(3, TimeUnit.SECONDS))
+            {
+                process.descendants().forEach(ProcessHandle::destroyForcibly);
+                process.destroyForcibly().waitFor(3, TimeUnit.SECONDS);
+            }
+        }
+        catch (InterruptedException e)
+        {
+            Thread.currentThread().interrupt();
+            process.descendants().forEach(ProcessHandle::destroyForcibly);
+            process.destroyForcibly();
+        }
+    }
+
     private static synchronized void launch(boolean freePlay)
     {
         if (switching)
@@ -99,6 +121,14 @@ public final class LocalServerLauncher
                 throw new IOException(
                     "brainout-server.jar not found in " + serverDir
                 );
+            }
+
+            // Match Play must reload the latest profile instead of reusing
+            // a server process that may still hold an older profile in memory.
+            if (!freePlay && matchServer != null && matchServer.isAlive())
+            {
+                stopServer(matchServer);
+                matchServer = null;
             }
 
             Process process = freePlay ? freePlayServer : matchServer;
