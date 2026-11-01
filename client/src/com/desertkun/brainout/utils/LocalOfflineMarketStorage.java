@@ -22,6 +22,7 @@ public final class LocalOfflineMarketStorage
 {
     private static final String KEY = "items";
     private static final String PENDING_KEY = "pending-deposits";
+    private static final String PENDING_WITHDRAWALS_KEY = "pending-withdrawals";
     private static final String PREFERENCES_PREFIX = "brainout-offline-stash-";
 
     private LocalOfflineMarketStorage()
@@ -74,6 +75,51 @@ public final class LocalOfflineMarketStorage
         Preferences prefs = preferences();
         prefs.putString(PENDING_KEY, pending.toString());
         prefs.flush();
+    }
+
+    private static JSONArray loadPendingWithdrawals()
+    {
+        try
+        {
+            return new JSONArray(preferences().getString(PENDING_WITHDRAWALS_KEY, "[]"));
+        }
+        catch (Exception e)
+        {
+            Gdx.app.error("OfflineStash", "Could not read pending stash withdrawals.", e);
+            throw new IllegalStateException("Pending Freeplay stash withdrawals are unreadable.", e);
+        }
+    }
+
+    private static void savePendingWithdrawals(JSONArray pending)
+    {
+        Preferences prefs = preferences();
+        prefs.putString(PENDING_WITHDRAWALS_KEY, pending.toString());
+        prefs.flush();
+    }
+
+    private static void mergePendingWithdrawal(JSONArray pending, String name, JSONObject payload,
+                                               int inventoryAmountBefore, int amount)
+    {
+        int index = findStoredItem(pending, name, payload);
+        if (index >= 0)
+        {
+            JSONObject stored = pending.getJSONObject(index);
+            int currentAmount = stored.optInt("amount", 0);
+            if (currentAmount < 0 || currentAmount > Integer.MAX_VALUE - amount)
+            {
+                throw new IllegalArgumentException("Pending withdrawal amount overflow.");
+            }
+            stored.put("amount", currentAmount + amount);
+            stored.put("payload", payload.toString());
+            return;
+        }
+
+        JSONObject stored = new JSONObject();
+        stored.put("name", name);
+        stored.put("payload", payload.toString());
+        stored.put("amount", amount);
+        stored.put("before", inventoryAmountBefore);
+        pending.put(stored);
     }
 
     private static int countMatchingInventory(ConsumableContainer source, String name, JSONObject payload)
@@ -262,6 +308,102 @@ public final class LocalOfflineMarketStorage
         catch (Exception e)
         {
             Gdx.app.error("OfflineStash", "Could not clear reconciled pending deposits.", e);
+        }
+
+        if (inventoryChanged)
+        {
+            target.updateWeight();
+        }
+    }
+
+    /**
+     * Reconciles withdrawals when a new offline Freeplay inventory is spawned.
+     * The stash is already reduced at withdrawal time, so this journal restores
+     * any withdrawn quantity missing from the newly-created inventory.
+     */
+    public static synchronized void reconcilePendingWithdrawals(ConsumableContainer target)
+    {
+        if (target == null)
+        {
+            return;
+        }
+
+        final JSONArray pending;
+        try
+        {
+            pending = loadPendingWithdrawals();
+        }
+        catch (Exception e)
+        {
+            return;
+        }
+
+        if (pending.length() == 0)
+        {
+            return;
+        }
+
+        boolean allReconciled = true;
+        boolean inventoryChanged = false;
+
+        for (int i = 0; i < pending.length(); i++)
+        {
+            JSONObject stored = pending.optJSONObject(i);
+            if (stored == null)
+            {
+                allReconciled = false;
+                continue;
+            }
+
+            String name = stored.optString("name", "");
+            int amount = stored.optInt("amount", 0);
+            int before = stored.optInt("before", 0);
+            JSONObject payload = readPayload(stored);
+            if (name.isEmpty() || amount <= 0 || before < 0 || payload == null
+                || before > Integer.MAX_VALUE - amount)
+            {
+                allReconciled = false;
+                continue;
+            }
+
+            int expectedAmount = before + amount;
+            int currentAmount = countMatchingInventory(target, name, payload);
+            int missing = expectedAmount - currentAmount;
+            if (missing <= 0)
+            {
+                continue;
+            }
+
+            try
+            {
+                ConsumableRecord restored = MarketUtils.MarketObjectToConsumableRecord(name, payload, missing);
+                if (restored == null || restored.getItem() == null)
+                {
+                    allReconciled = false;
+                    continue;
+                }
+                restored.setId(target.newId());
+                target.addRecord(restored);
+                inventoryChanged = true;
+                Gdx.app.log("OfflineStash", "Restored pending withdrawal: " + missing + " x " + name);
+            }
+            catch (Exception e)
+            {
+                allReconciled = false;
+                Gdx.app.error("OfflineStash", "Could not restore pending withdrawal: " + name, e);
+            }
+        }
+
+        if (allReconciled)
+        {
+            try
+            {
+                savePendingWithdrawals(new JSONArray());
+            }
+            catch (Exception e)
+            {
+                Gdx.app.error("OfflineStash", "Could not clear reconciled pending withdrawals.", e);
+            }
         }
 
         if (inventoryChanged)
@@ -564,12 +706,19 @@ public final class LocalOfflineMarketStorage
         final JSONArray updated;
         final JSONArray previousPending;
         final JSONArray updatedPending;
+        final JSONArray previousPendingWithdrawals;
+        final JSONArray updatedPendingWithdrawals;
+        final int inventoryAmountBefore;
         try
         {
             previous = load();
             updated = new JSONArray(previous.toString());
             previousPending = loadPending();
             updatedPending = new JSONArray(previousPending.toString());
+            previousPendingWithdrawals = loadPendingWithdrawals();
+            updatedPendingWithdrawals = new JSONArray(previousPendingWithdrawals.toString());
+            inventoryAmountBefore = countMatchingInventory(target, entry.name, entry.payload);
+            mergePendingWithdrawal(updatedPendingWithdrawals, entry.name, entry.payload, inventoryAmountBefore, amount);
             reducePending(updatedPending, entry.name, entry.payload, amount);
         }
         catch (Exception e)
@@ -623,6 +772,8 @@ public final class LocalOfflineMarketStorage
 
         try
         {
+            // Persist the recovery journal before changing either durable copy.
+            savePendingWithdrawals(updatedPendingWithdrawals);
             target.addRecord(restored);
             target.updateWeight();
             save(updated);
@@ -643,6 +794,7 @@ public final class LocalOfflineMarketStorage
             {
                 save(previous);
                 savePending(previousPending);
+                savePendingWithdrawals(previousPendingWithdrawals);
             }
             catch (Exception rollbackError)
             {
