@@ -1,0 +1,26 @@
+"DepotBuildConfig"
+{
+  "DepotID" "578312"
+  "ContentRoot" "mac/BrainOut/BrainOut.app/Contents/MacOS"
+
+  "FileMapping"
+  {
+    "LocalPath" "./bin/*"
+    "DepotPath" "./bin"
+    "recursive" "1"
+  }
+
+  "FileMapping"
+  {
+    "LocalPath" "./conf/*"
+    "DepotPath" "./conf"
+    "recursive" "1"
+  }
+
+  "FileMapping"
+  {
+    "LocalPath" "./lib/*"
+    "DepotPath" "./lib"
+    "recursive" "1"
+  }
+}
